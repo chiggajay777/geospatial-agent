@@ -1,0 +1,133 @@
+{
+  "planner": "deterministic",
+  "llm_requested": false,
+  "llm_model": null,
+  "llm_base_url": null,
+  "fallback_reason": null,
+  "steps": [
+    {
+      "round": 0,
+      "tool": "analyze_terrain",
+      "arguments": {},
+      "ok": true,
+      "error": null,
+      "result": {
+        "tool": "analyze_terrain",
+        "mode": "demo",
+        "layer": "terrain_flatness_proxy",
+        "score_0_100": 54.6,
+        "label": "elevated",
+        "is_mock": true,
+        "data_source": "MOCK (bbox geometry proxy; no DEM fetched)",
+        "extras": {},
+        "terrain_summary": null,
+        "parameters": {
+          "res_m": 30.0,
+          "buffer_m": 3000.0,
+          "stream_area_km2": 0.5,
+          "hand_cap_m": 10.0,
+          "slope_cap_deg": 5.0,
+          "permanent_occurrence": 80.0,
+          "w_terrain": 0.7,
+          "w_water": 0.3,
+          "w_hand": 0.8,
+          "w_slope": 0.2
+        }
+      },
+      "planner": "deterministic"
+    },
+    {
+      "round": 0,
+      "tool": "analyze_surface_water",
+      "arguments": {},
+      "ok": true,
+      "error": null,
+      "result": {
+        "tool": "analyze_surface_water",
+        "mode": "demo",
+        "layer": "hydrology_proxy",
+        "score_0_100": 39.1,
+        "label": "moderate",
+        "is_mock": true,
+        "data_source": "MOCK (deterministic heuristic from AOI geometry)",
+        "extras": {},
+        "water_summary": null,
+        "parameters": {
+          "res_m": 30.0,
+          "buffer_m": 3000.0,
+          "stream_area_km2": 0.5,
+          "hand_cap_m": 10.0,
+          "slope_cap_deg": 5.0,
+          "permanent_occurrence": 80.0,
+          "w_terrain": 0.7,
+          "w_water": 0.3,
+          "w_hand": 0.8,
+          "w_slope": 0.2
+        }
+      },
+      "planner": "deterministic"
+    },
+    {
+      "round": 0,
+      "tool": "score_susceptibility",
+      "arguments": {},
+      "ok": true,
+      "error": null,
+      "result": {
+        "tool": "score_susceptibility",
+        "mode": "demo",
+        "composite_score_0_100": 45.1,
+        "composite_label": "moderate",
+        "composite_is_mock": true,
+        "composite_data_source": "MOCK (derived from mock layers)",
+        "aoi_area_km2": 51.3829,
+        "aoi_bounds": [
+          120.1,
+          30.22,
+          120.18,
+          30.28
+        ],
+        "aoi_centroid": [
+          120.14,
+          30.25
+        ],
+        "layers": [
+          {
+            "name": "hydrology_proxy",
+            "score_0_100": 39.1,
+            "label": "moderate",
+            "is_mock": true
+          },
+          {
+            "name": "terrain_flatness_proxy",
+            "score_0_100": 54.6,
+            "label": "elevated",
+            "is_mock": true
+          },
+          {
+            "name": "inundation_susceptibility",
+            "score_0_100": 45.1,
+            "label": "moderate",
+            "is_mock": true
+          }
+        ],
+        "parameters": {
+          "res_m": 30.0,
+          "buffer_m": 3000.0,
+          "stream_area_km2": 0.5,
+          "hand_cap_m": 10.0,
+          "slope_cap_deg": 5.0,
+          "permanent_occurrence": 80.0,
+          "w_terrain": 0.7,
+          "w_water": 0.3,
+          "w_hand": 0.8,
+          "w_slope": 0.2
+        }
+      },
+      "planner": "deterministic"
+    }
+  ],
+  "narrative_source": "deterministic",
+  "number_audit_rejected": [],
+  "llm_draft": null
+}

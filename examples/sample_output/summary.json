@@ -1,0 +1,83 @@
+{
+  "product": "geo-flood-agent",
+  "version": "0.3.0",
+  "mode": "demo",
+  "planner": "deterministic",
+  "narrative_source": "deterministic",
+  "llm_enabled": false,
+  "llm_requested": false,
+  "composite_score_0_100": 45.1,
+  "composite_label": "moderate",
+  "aoi_bounds": [
+    120.1,
+    30.22,
+    120.18,
+    30.28
+  ],
+  "aoi_centroid": [
+    120.14,
+    30.25
+  ],
+  "aoi_area_km2_approx": 51.3829,
+  "tools_available": [
+    "analyze_surface_water",
+    "analyze_terrain",
+    "fetch_open_elevation",
+    "run_flood_screening",
+    "score_susceptibility",
+    "validate_aoi_bbox",
+    "validate_aoi_geojson",
+    "write_report"
+  ],
+  "layers": [
+    {
+      "name": "hydrology_proxy",
+      "score_0_100": 39.1,
+      "label": "moderate",
+      "is_mock": true,
+      "data_source": "MOCK (deterministic heuristic from AOI geometry)",
+      "notes_en": "MOCK heuristic from AOI centroid latitude/longitude only. Not stream networks, not rainfall, not floodplain maps.",
+      "extras": {}
+    },
+    {
+      "name": "terrain_flatness_proxy",
+      "score_0_100": 54.6,
+      "label": "elevated",
+      "is_mock": true,
+      "data_source": "MOCK (bbox geometry proxy; no DEM fetched)",
+      "notes_en": "MOCK: bbox aspect ratio + area used as a stand-in for flatness. Use --mode live for Copernicus GLO-30 HAND and slope.",
+      "extras": {}
+    },
+    {
+      "name": "inundation_susceptibility",
+      "score_0_100": 45.1,
+      "label": "moderate",
+      "is_mock": true,
+      "data_source": "MOCK (derived from mock layers)",
+      "notes_en": "MOCK susceptibility blending hydrology_proxy + terrain proxy. NOT satellite water detection, NOT insurance flood zones.",
+      "extras": {}
+    }
+  ],
+  "terrain_summary": null,
+  "water_summary": null,
+  "parameters": {
+    "res_m": 30.0,
+    "buffer_m": 3000.0,
+    "stream_area_km2": 0.5,
+    "hand_cap_m": 10.0,
+    "slope_cap_deg": 5.0,
+    "permanent_occurrence": 80.0,
+    "w_terrain": 0.7,
+    "w_water": 0.3,
+    "w_hand": 0.8,
+    "w_slope": 0.2
+  },
+  "transfers": {
+    "http_get_bytes": 0,
+    "largest_head_content_length": 0
+  },
+  "figures": [
+    "layer_scores.png"
+  ],
+  "note": "Layer tables are authoritative. MOCK layers are excluded from the live composite."
+}
