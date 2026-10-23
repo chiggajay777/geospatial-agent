@@ -2,7 +2,9 @@
 
 **AOI in → bilingual (EN/ZH) flood / inundation screening memo, GeoJSON, `summary.json`, and figures.**
 
-Portfolio piece for a remote-sensing / hydrology PhD application. The core path uses free public data and runs on a CPU (tested here with Python 3.12). No paid API key is required.
+Portfolio piece for a remote-sensing / hydrology PhD application. The core path uses free public data and runs on a CPU (tested here with Python 3.12). `--demo` needs no API key and does not use the network.
+
+An optional [Geoapify](https://www.geoapify.com) place query reads `GEOAPIFY_API_KEY` and adds a geocoded AOI, nearby places, and a travel-time isoline. Those records are location context. They are not flood depth. See [Geoapify place context](#geoapify-place-context).
 
 > **What a live run is.** Copernicus DEM GLO-30 (a digital surface model) is turned into height above nearest drainage (HAND) and slope. JRC Global Surface Water occurrence supplies a permanent-water mask and a historical-wetness layer. The composite is the mean susceptibility on **land that is not permanent water**. It is a screening index. It is not a hydraulic flood depth, not a forecast, and not an official floodplain.
 >
@@ -121,6 +123,72 @@ Raster summaries on this run:
 
 **How to read this.** AUROC 0.823 means a flooded land pixel outranks a dry land pixel about 82% of the time. Average precision 0.340 is above the 0.085 prevalence baseline and is pulled down by rare-flood scenes (Sri-Lanka, Paraguay, Somalia, USA). The score ≥ 50 threshold recalls 95.5% of flooded land and is precise on only 13.8% of its alarms: HAND lights up susceptible ground that this particular Sentinel-1 scene did not inundate. That is what a susceptibility index does. It is not a detector of one flood date. Somalia is the weakest event (AUROC 0.665). Nigeria is the strongest (0.961). No threshold or HAND cap was adjusted after seeing these numbers.
 
+## Geoapify place context
+
+The screening math does not use Geoapify. Copernicus HAND and JRC occurrence are unchanged. [Geoapify](https://www.geoapify.com) supplies three optional location facts. A block is tagged **LIVE** only when that call returned data that this program parsed. A failed call is **UNAVAILABLE**. An isoline that is accepted but not finished is **PENDING**. Nothing is filled in with a guessed name or a circle.
+
+1. **Geocoding.** `GET https://api.geoapify.com/v1/geocode/search` (`text`, `format=geojson`, `bias=countrycode:none`). Docs: [forward geocoding](https://apidocs.geoapify.com/docs/geocoding/forward-geocoding/).
+2. **Nearby places.** `GET https://api.geoapify.com/v2/places` with a `circle:lon,lat,radiusMeters` filter and `bias=proximity:lon,lat`. Docs: [Places API](https://apidocs.geoapify.com/docs/places/). Default categories are hospitals, schools, universities, fire stations, ambulance stations, police, train stations, and subway stations.
+3. **Travel-time isoline.** `GET https://api.geoapify.com/v1/isoline` with `type=time` (range in seconds), `mode`, and `traffic=free_flow`. Docs: [Isoline API](https://apidocs.geoapify.com/docs/isolines/). The polygon is the reachable area for that trip. It is not a flood extent and not a flood depth.
+
+The client is the Python standard library calling those REST endpoints (the same query names as the [OpenAPI specs](https://apidocs.geoapify.com/)). It does not call the MCP server during a screening run.
+
+The free plan is about 3000 requests per day. One `--place` run is a geocode, a places search, and one isoline, plus a single follow-up if the isoline comes back HTTP 202. The unit tests mock HTTP and do not spend that quota.
+
+### Key
+
+`--demo` does not read a key.
+
+`--place` reads `GEOAPIFY_API_KEY`. If it is missing, the process exits with an error and does not invent an AOI. The Open Geospatial Program demo key is in `.env.example` with Geoapify’s note (free plan, limited use). Copy what you need into `.env` (gitignored) or export it. For your own projects, create a key at [myprojects.geoapify.com](https://myprojects.geoapify.com).
+
+```bash
+export GEOAPIFY_API_KEY=...   # see .env.example; do not commit .env
+```
+
+`python-dotenv` loads a local `.env` when it is installed. The client still reads the variable from the environment. If dotenv is absent, an exported variable is enough.
+
+### Commands
+
+Offline demo first (no key, no network):
+
+```bash
+python -m geo_flood_agent --demo --out examples/sample_output
+```
+
+A place query builds an AOI and runs the existing screening. Flood layers stay MOCK unless you pass `--mode live`. Geoapify sections are LIVE when those calls succeed. The AOI is the geocoder bbox when both sides are between 400 m and 8 km, otherwise a square buffer around the point (`--aoi-buffer-m`, default 2000). That polygon is not the hand-drawn sample AOI, so the MOCK composite will not be 45.1.
+
+```bash
+# Geocode + nearby places + 10-minute drive isoline
+python -m geo_flood_agent --place "West Lake, Hangzhou" --out output/place_demo
+
+# Same place, Copernicus HAND + JRC occurrence (downloads COG windows)
+python -m geo_flood_agent --place "West Lake, Hangzhou" --mode live --out output/place_live
+
+# Geocode and nearby places only
+python -m geo_flood_agent --place "West Lake, Hangzhou" --no-isoline --out output/place_no_isoline
+
+# Walk isoline, 15 minutes, tighter places radius
+python -m geo_flood_agent --place "West Lake, Hangzhou" \
+  --travel-mode walk --isoline-min 15 --places-radius-m 1500 \
+  --out output/place_walk
+```
+
+`--list-tools` prints `geocode_place`, `search_nearby_places`, and `travel_time_isoline` with the flood tools. Those three are not part of the `--demo` trace.
+
+| Tool | REST |
+|------|------|
+| `geocode_place` | Geocoding API |
+| `search_nearby_places` | Places API |
+| `travel_time_isoline` | Isoline API, `type=time` |
+
+### MCP (optional, for an AI client)
+
+Screening runs use REST. An AI client that should call Geoapify itself still needs the MCP server. Endpoint: `https://api.geoapify.com/v1/mcp`. Docs: [MCP server](https://apidocs.geoapify.com/docs/mcp/) and [connect an AI client](https://apidocs.geoapify.com/how-to/api-tooling-ai/connect-ai-client-mcp/).
+
+A Cursor snippet that references the environment variable, and does not contain a key, is [`docs/geoapify-mcp.json.example`](docs/geoapify-mcp.json.example). Put the real key in the environment that starts the client (`GEOAPIFY_API_KEY`). Do not paste it into the JSON file. Geoapify also documents `https://api-eu.geoapify.com/v1/mcp`. This package’s REST client uses `https://api.geoapify.com`.
+
+Prompts for this slice, including one that had to be corrected when the isoline moved into this PR: [`docs/prompts.md`](docs/prompts.md).
+
 ## LLM setup
 
 Default: no model is called.
@@ -146,10 +214,11 @@ OpenAI uses the same variables with `OPENAI_BASE_URL=https://api.openai.com/v1` 
 - Validation covers the Sen1Floods11 test split only (11 countries’ events in that file, 82 usable chips). It does not measure performance outside those scenes, and it does not test the water-history term.
 - There is no rainfall, no hydrograph, and no forecast.
 - Do not use the memo for engineering, insurance, or regulatory decisions.
+- Geoapify place names and the travel-time polygon are context from that API. They do not measure water. The isoline is a reachable area for a mode and a duration (`traffic=free_flow` unless you change the client). It is not a flood extent.
 
 ## Reproduce (macOS, Python 3.12)
 
-From the repository root. Rasterio’s wheel supplies GDAL; a separate GDAL install is unnecessary. No API key.
+From the repository root. Rasterio’s wheel supplies GDAL; a separate GDAL install is unnecessary. `--demo` needs no API key.
 
 ```bash
 python3 -m venv .venv
@@ -158,8 +227,13 @@ python -m pip install -U pip
 python -m pip install -r requirements.txt
 python -m pip install -e .
 
-# Offline MOCK demo (no network)
+# Offline MOCK demo (no network, no Geoapify key). Checked-in sample memo is the v0.3.0 run;
+# this command still scores that same AOI (composite 45.1, all MOCK).
 python -m geo_flood_agent --demo --out examples/sample_output
+
+# Place context (needs GEOAPIFY_API_KEY; see the Geoapify section). Flood layers stay MOCK
+# unless you also pass --mode live. The geocoded AOI is not the hand-drawn sample polygon.
+python -m geo_flood_agent --place "West Lake, Hangzhou" --out output/place_demo
 
 # Live screening: Copernicus GLO-30 HAND + JRC occurrence, sample AOI
 python -m geo_flood_agent --aoi examples/sample_aoi.geojson --mode live --out output/live_demo
@@ -171,18 +245,22 @@ python -m geo_flood_agent --validate --out output/validation
 # python -m geo_flood_agent --validate --validate-max-per-event 2 --out output/validation_small
 
 python -m geo_flood_agent --list-tools
+
+# Unit tests (no network). Geoapify calls are mocked.
+python -m unittest discover -s tests
 ```
 
 ## Layout
 
 ```
-src/geo_flood_agent/    CLI, deterministic + LLM planners, HAND, JRC mask, validation
+src/geo_flood_agent/    CLI, deterministic + LLM planners, HAND, JRC mask, Geoapify REST, validation
 examples/               sample AOI and the offline MOCK memo
+docs/                   prompts used for the Geoapify slice; MCP client snippet
 figures/                live sample maps and validation curves from the run recorded above
-tests/test_core.py      synthetic valley, metrics, mock scores, local tool-calling stub
+tests/                  synthetic valley, metrics, mock scores, mocked Geoapify HTTP
 ```
 
-**Tools:** `validate_aoi_geojson` · `validate_aoi_bbox` · `analyze_terrain` · `analyze_surface_water` · `score_susceptibility` · `run_flood_screening` · `write_report` · `fetch_open_elevation`
+**Tools:** `validate_aoi_geojson` · `validate_aoi_bbox` · `geocode_place` · `search_nearby_places` · `travel_time_isoline` · `analyze_terrain` · `analyze_surface_water` · `score_susceptibility` · `run_flood_screening` · `write_report` · `fetch_open_elevation`
 
 ## License
 

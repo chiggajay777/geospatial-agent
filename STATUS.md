@@ -1,8 +1,18 @@
-# STATUS — geo-flood-agent v0.3.0
+# STATUS — geo-flood-agent v0.4.0
 
-**Date:** 2026-10-18 (UTC)
+**Date:** 2026-10-23 (UTC)
 
-## What this version does
+The HAND and JRC method below is the v0.3.0 baseline (measured 2026-10-18). This slice does not re-run it. v0.4.0 adds optional Geoapify place context on top of that screening.
+
+## Geoapify place context (v0.4.0)
+
+`--demo` is still offline and still scores the sample AOI at composite **45.1**, all MOCK. It does not read `GEOAPIFY_API_KEY`.
+
+`--place` calls Geoapify REST (geocode, nearby places, travel-time isoline) and then the existing screener. Flood layers stay MOCK unless `--mode live`. Geoapify blocks are **LIVE** only when that response was parsed. They are not flood depth. The isoline is `GET /v1/isoline?type=time`. A 202 is followed once by `id`; if the polygon is still missing, the memo says PENDING and does not invent a circle.
+
+Unit tests mock HTTP (`python -m unittest discover -s tests`). They do not spend the free-plan quota (~3000 requests/day).
+
+## What the screening still does
 
 AOI in → bilingual screening memo. Live mode reads Copernicus DEM GLO-30 (HAND + slope) and JRC Global Surface Water occurrence, and it **masks permanent water** before scoring. `--demo` stays offline and MOCK. The default planner is a logged tool sequence with no API key. `--llm` can call the same tools through any OpenAI-compatible endpoint (OpenAI or local Ollama); drafts that invent numbers are rejected.
 
@@ -39,3 +49,5 @@ The validation score is terrain concern only. JRC occurrence is not a predictor 
 - Rainfall, hydrographs, or a forecast.
 - Bare-earth DEM (FABDEM / a lidar DTM).
 - Using JRC occurrence as a validated predictor (kept out on purpose).
+- A live Geoapify call inside the default unit tests (mocked only).
+- Routing directions, route matrices, or isodistance. Travel context here is one time-based isoline.
