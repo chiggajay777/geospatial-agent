@@ -2,6 +2,8 @@
 
 Short record of the instructions behind this change, and what a person had to correct. The flood method (Copernicus HAND and the JRC permanent-water mask) was not rewritten. Place names in the tests are fixtures, not live Geoapify answers.
 
+How to run the same checks: [`docs/walkthrough.md`](walkthrough.md).
+
 ## 1. Place string to a screened AOI (used as specified)
 
 Add an OpenAPI-style REST client for Geoapify Geocoding and Places. `GEOAPIFY_API_KEY` comes from the environment. `--place "West Lake, Hangzhou"` geocodes, builds an AOI from the result, and runs the existing flood screening. Nearby places go into the bilingual memo and the GeoJSON. Tag a fetched Geoapify field **LIVE**. Do not invent places. Do not claim flood depth from Geoapify. `--demo` stays offline and does not need a key.
@@ -23,3 +25,21 @@ Fix, chosen by hand and written into the report: use the geocoder bbox only when
 ## 4. Demo key in the public tree (explicit authorization, not a guess)
 
 Geoapify’s co-founder authorized publishing the Open Geospatial Program demo key. It is only in `.env.example`, with their note. Runtime still reads `GEOAPIFY_API_KEY`. `.env` stays gitignored. Tests do not call the live API. A missing key fails `--place` with an error and does not invent coordinates.
+
+## Tools and REST endpoints
+
+Screening calls these three tools over REST. It does not call the MCP server during a run.
+
+| Tool | Geoapify REST |
+|------|----------------|
+| `geocode_place` | `GET https://api.geoapify.com/v1/geocode/search` |
+| `search_nearby_places` | `GET https://api.geoapify.com/v2/places` |
+| `travel_time_isoline` | `GET https://api.geoapify.com/v1/isoline` with `type=time` (range in seconds) |
+
+## 5. Smoke check: `--place "West Lake, Hangzhou"` (what worked / what a person still checks)
+
+Not a separate prompt. This is the check that geocode, places, and the isoline run together.
+
+What worked: with `GEOAPIFY_API_KEY` set, `--place "West Lake, Hangzhou"` calls the three tools above, then the existing flood tools. When those HTTP calls succeed, the memo and the stdout tag geocode, nearby places, and the isoline **LIVE**. Flood layers stay **MOCK** unless `--mode live` is also set. `--demo` is unchanged (composite 45.1, all MOCK, no key). Unit tests still mock HTTP; they are not this smoke check.
+
+What a person still checks: the geocoded AOI is not the hand-drawn sample, so the MOCK composite is not 45.1. A missing key is an error, not a filled-in AOI. If the isoline is HTTP 202 and still has no polygon after one `id` follow-up, the tag is **PENDING** and no circle is drawn. Place names are copied from the response only. Steps are in [`docs/walkthrough.md`](walkthrough.md).

@@ -187,6 +187,8 @@ Screening runs use REST. An AI client that should call Geoapify itself still nee
 
 A Cursor snippet that references the environment variable, and does not contain a key, is [`docs/geoapify-mcp.json.example`](docs/geoapify-mcp.json.example). Put the real key in the environment that starts the client (`GEOAPIFY_API_KEY`). Do not paste it into the JSON file. Geoapify also documents `https://api-eu.geoapify.com/v1/mcp`. This package’s REST client uses `https://api.geoapify.com`.
 
+Reviewer walkthrough (offline `--demo`, then `--place`): [`docs/walkthrough.md`](docs/walkthrough.md).
+
 Prompts for this slice, including one that had to be corrected when the isoline moved into this PR: [`docs/prompts.md`](docs/prompts.md).
 
 ## LLM setup
@@ -255,7 +257,7 @@ python -m unittest discover -s tests
 ```
 src/geo_flood_agent/    CLI, deterministic + LLM planners, HAND, JRC mask, Geoapify REST, validation
 examples/               sample AOI and the offline MOCK memo
-docs/                   prompts used for the Geoapify slice; MCP client snippet
+docs/                   reviewer walkthrough, Geoapify prompts, MCP client snippet
 figures/                live sample maps and validation curves from the run recorded above
 tests/                  synthetic valley, metrics, mock scores, mocked Geoapify HTTP
 ```
