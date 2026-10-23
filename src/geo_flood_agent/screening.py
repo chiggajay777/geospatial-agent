@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from geo_flood_agent import __version__ as __version_product__
 from geo_flood_agent.aoi import AOI
 from geo_flood_agent.cog import TransferStats
 from geo_flood_agent.constants import (
@@ -30,8 +31,6 @@ from geo_flood_agent.constants import (
 )
 from geo_flood_agent.elevation import elevation_to_terrain_score, fetch_elevation_stats
 from geo_flood_agent.scoring import summarize_aoi
-
-__version_product__ = "0.3.0"
 
 
 @dataclass
@@ -62,6 +61,8 @@ class ScreeningResult:
     water_summary: dict[str, Any] | None = None
     parameters: dict[str, Any] | None = None
     transfers: dict[str, Any] | None = None
+    # Geoapify place / travel-time context. Not a flood layer and not scored.
+    geo_context: dict[str, Any] | None = None
     # Numpy grids for figures. Never serialized.
     rasters: dict[str, Any] | None = None
 
@@ -801,4 +802,14 @@ def screening_to_geojson(aoi: AOI, result: ScreeningResult) -> dict:
         props["water_summary"] = result.water_summary
     if result.transfers:
         props["transfers"] = result.transfers
-    return aoi.to_feature_collection(props)
+    fc = aoi.to_feature_collection(props)
+    ctx = result.geo_context
+    if not ctx:
+        return fc
+    fc["features"][0]["properties"]["role"] = "screening_aoi"
+    fc["features"][0]["properties"]["geoapify_note"] = (
+        "Geoapify features in this collection are place and travel-time context. "
+        "They are not flood depth."
+    )
+    fc["features"].extend(ctx.get("features") or [])
+    return fc

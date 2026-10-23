@@ -211,7 +211,7 @@ class DemoCLITests(unittest.TestCase):
         code = main(["--demo", "--out", str(out)])
         self.assertEqual(code, 0)
         summary = json.loads((out / "summary.json").read_text())
-        self.assertEqual(summary["version"], "0.3.0")
+        self.assertEqual(summary["version"], "0.4.0")
         self.assertEqual(summary["planner"], "deterministic")
         self.assertFalse(summary["llm_enabled"])
         trace = json.loads((out / "tool_trace.json").read_text())

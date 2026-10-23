@@ -9,15 +9,18 @@ from pathlib import Path
 from geo_flood_agent import __version__
 from geo_flood_agent.agent import FloodScreeningAgent
 from geo_flood_agent.config import get_settings
+from geo_flood_agent.geoapify import TRAVEL_MODES
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="geo-flood-agent",
         description=(
-            "Flood / water inundation screening for a bbox or GeoJSON AOI. "
-            "--demo = offline MOCK. --mode live = Copernicus GLO-30 HAND + JRC occurrence "
-            "(no paid keys). --validate = Sen1Floods11 test-split skill of the terrain score."
+            "Flood / water inundation screening for a bbox, GeoJSON AOI, or a Geoapify place. "
+            "--demo = offline MOCK (no key, no network). "
+            "--place geocodes with Geoapify, then screens that AOI. "
+            "--mode live = Copernicus GLO-30 HAND + JRC occurrence. "
+            "--validate = Sen1Floods11 test-split skill of the terrain score."
         ),
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -37,6 +40,70 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Bounding box as west,south,east,north (WGS84 degrees).",
+    )
+    p.add_argument(
+        "--place",
+        type=str,
+        default=None,
+        help=(
+            "Geocode this address or place name with Geoapify, build an AOI, "
+            "and run flood screening. Also fetches nearby places and a travel-time isoline. "
+            "Requires GEOAPIFY_API_KEY. Does not run with --demo."
+        ),
+    )
+    p.add_argument(
+        "--aoi-buffer-m",
+        type=float,
+        default=2000.0,
+        help=(
+            "Square buffer in meters around the geocoded point when the geocoder bbox "
+            "is missing or outside 400 m–8 km. Default 2000. Used only with --place."
+        ),
+    )
+    p.add_argument(
+        "--places-radius-m",
+        type=float,
+        default=None,
+        help=(
+            "Radius in meters for the Geoapify Places circle filter around the geocoded point. "
+            "Default: the AOI buffer. Used only with --place."
+        ),
+    )
+    p.add_argument(
+        "--places-limit",
+        type=int,
+        default=15,
+        help="Maximum nearby places to request (1–20). Default 15. Used only with --place.",
+    )
+    p.add_argument(
+        "--places-categories",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated Geoapify category keys. "
+            "Default: hospitals, schools, universities, fire stations, ambulance stations, "
+            "police, train stations, subway stations."
+        ),
+    )
+    p.add_argument(
+        "--isoline-min",
+        type=float,
+        default=10.0,
+        help=(
+            "Travel-time isoline range in minutes (Geoapify Isoline API, type=time). "
+            "Default 10. Range 1–60. Used only with --place."
+        ),
+    )
+    p.add_argument(
+        "--travel-mode",
+        choices=list(TRAVEL_MODES),
+        default="drive",
+        help="Travel mode for the isoline. Default drive. Used only with --place.",
+    )
+    p.add_argument(
+        "--no-isoline",
+        action="store_true",
+        help="With --place, skip the travel-time isoline. Geocode and nearby places still run.",
     )
     p.add_argument(
         "--mode",
@@ -123,10 +190,29 @@ def main(argv: list[str] | None = None) -> int:
             print(name)
         return 0
 
+    if args.place and (args.demo or args.aoi or args.bbox):
+        print(
+            "ERROR: --place is separate from --demo, --aoi, and --bbox.",
+            file=sys.stderr,
+        )
+        return 2
+
     out_dir = Path(args.out) if args.out else Path.cwd() / "output"
 
     try:
-        if args.demo:
+        if args.place:
+            result = agent.run_place(
+                args.place,
+                out_dir=out_dir,
+                buffer_m=args.aoi_buffer_m,
+                places_radius_m=args.places_radius_m,
+                places_limit=args.places_limit,
+                places_categories=args.places_categories,
+                isoline_minutes=args.isoline_min,
+                travel_mode=args.travel_mode,
+                skip_isoline=args.no_isoline,
+            )
+        elif args.demo:
             aoi_path = _builtin_sample_aoi()
             settings = get_settings(mode_override="demo", use_llm=True if args.llm else None)
             agent = FloodScreeningAgent(settings)
@@ -141,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
             result = agent.run(bbox=tuple(parts), out_dir=out_dir)  # type: ignore[arg-type]
         else:
             print(
-                "ERROR: provide --demo, --aoi PATH, or --bbox w,s,e,n",
+                "ERROR: provide --demo, --place TEXT, --aoi PATH, or --bbox w,s,e,n",
                 file=sys.stderr,
             )
             return 2
@@ -163,6 +249,18 @@ def main(argv: list[str] | None = None) -> int:
     live_n = sum(1 for ly in s.layers if not ly.is_mock)
     mock_n = sum(1 for ly in s.layers if ly.is_mock)
     print(f"  layers:            {live_n} LIVE / {mock_n} MOCK")
+    ctx = s.geo_context or {}
+    if ctx:
+        geocode = ctx.get("geocode") or {}
+        places = ctx.get("places") or {}
+        isoline = ctx.get("isoline") or {}
+        print(f"  geocode:           {geocode.get('kind')} {geocode.get('formatted')}")
+        print(f"  nearby places:     {places.get('kind')} count={places.get('count')}")
+        print(
+            "  isoline:           "
+            f"{isoline.get('kind')} mode={isoline.get('mode')} "
+            f"range_s={isoline.get('range_seconds')}"
+        )
     if any(ly.is_mock for ly in s.layers):
         print("  note:              MOCK layers present — see report disclaimer")
     return 0
