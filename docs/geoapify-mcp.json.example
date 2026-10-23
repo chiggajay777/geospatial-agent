@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "geoapify": {
+      "url": "https://api.geoapify.com/v1/mcp",
+      "headers": {
+        "x-api-key": "${env:GEOAPIFY_API_KEY}"
+      }
+    }
+  }
+}

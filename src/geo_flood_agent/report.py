@@ -23,6 +23,158 @@ def _fmt(value: Any, digits: int = 2) -> str:
     return str(value)
 
 
+def _cell(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    text = str(value).replace("|", "/").replace("\n", " ").strip()
+    return text or "n/a"
+
+
+def _geoapify_block(ctx: dict) -> str:
+    """Bilingual place / travel-time section. Omitted entirely when Geoapify was not used."""
+    geocode = ctx.get("geocode") or {}
+    places = ctx.get("places") or {}
+    isoline = ctx.get("isoline") or {}
+    bbox = geocode.get("geocoder_bbox")
+    bbox_text = "n/a" if not bbox else ", ".join(f"{float(v):.6f}" for v in bbox)
+    bounds = geocode.get("aoi_bounds") or []
+    bounds_text = "n/a" if len(bounds) != 4 else ", ".join(f"{float(v):.6f}" for v in bounds)
+    confidence = geocode.get("confidence")
+    confidence_text = "n/a" if confidence is None else _fmt(float(confidence), 3)
+    buffer = geocode.get("aoi_buffer_m")
+    buffer_text = "n/a" if buffer is None else f"{float(buffer):.0f} m"
+    attr = geocode.get("attribution")
+    attr_line = f"\nAttribution as returned: { _cell(attr) }\n" if attr else ""
+
+    place_rows = []
+    for row in places.get("places") or []:
+        dist = row.get("distance_m")
+        dist_text = "n/a" if dist is None else f"{float(dist):.0f}"
+        cats = ", ".join(row.get("categories") or [])
+        place_rows.append(
+            "| "
+            + " | ".join(
+                [
+                    _cell(row.get("name")),
+                    _cell(cats),
+                    dist_text,
+                    f"{float(row['lon']):.6f}",
+                    f"{float(row['lat']):.6f}",
+                    _cell(row.get("place_id")),
+                ]
+            )
+            + " |"
+        )
+    if places.get("kind") == "LIVE" and place_rows:
+        places_table = (
+            "| Name (as returned) | Categories | Distance (m) | Lon | Lat | Place id |\n"
+            "|--------------------|------------|-------------:|----:|----:|----------|\n"
+            + "\n".join(place_rows)
+            + "\n"
+        )
+    elif places.get("kind") == "LIVE":
+        places_table = (
+            "Geoapify returned no places for this filter. None are listed.\n\n"
+            "Geoapify 对此过滤条件没有返回地点。这里不列任何名称。\n"
+        )
+    else:
+        places_table = (
+            f"Request failed (`{_cell(places.get('kind'))}`). "
+            f"Error: `{_cell(places.get('error'))}`. No names were filled in.\n"
+        )
+
+    iso_kind = isoline.get("kind") or "n/a"
+    iso_bbox = isoline.get("bbox")
+    iso_bbox_text = "n/a" if not iso_bbox else ", ".join(f"{float(v):.6f}" for v in iso_bbox)
+    geom_types = ", ".join(isoline.get("geometry_types") or []) or "n/a"
+    if iso_kind == "LIVE":
+        iso_geom = (
+            f"Geometry: {geom_types}, {isoline.get('vertex_count')} vertices. "
+            f"Bounding box of the returned geometry (W,S,E,N): {iso_bbox_text}. "
+            "The coordinates are in `aoi_screening.geojson` (`role=geoapify_isoline`).\n"
+        )
+    elif iso_kind == "PENDING":
+        iso_geom = "No polygon was returned. Nothing was drawn in its place.\n"
+    elif iso_kind == "SKIPPED":
+        iso_geom = "No isoline request was sent.\n"
+    else:
+        iso_geom = "No polygon was returned. Nothing was drawn in its place.\n"
+
+    place_attrs = places.get("attributions") or []
+    place_attr = ""
+    if place_attrs:
+        place_attr = "Attribution as returned: " + "; ".join(_cell(a) for a in place_attrs) + "\n"
+
+    return f"""## Geoapify location context / Geoapify 地点上下文
+
+Geoapify supplied location context for this run. It is not a flood model and it does not report flood depth. Each block is tagged with the outcome of that call. **LIVE** means the body was fetched and parsed. Names that were not in the response are not added.
+
+### Geocode / 地理编码
+
+| Field | Value |
+|-------|-------|
+| Kind | **{_cell(geocode.get("kind"))}** |
+| Endpoint | `{_cell(geocode.get("endpoint"))}` |
+| Query | `{_cell(geocode.get("query"))}` |
+| Formatted result | {_cell(geocode.get("formatted"))} |
+| Name | {_cell(geocode.get("name"))} |
+| Coordinates (lon, lat) | {_fmt(geocode.get("lon"), 6)}, {_fmt(geocode.get("lat"), 6)} |
+| Result type | {_cell(geocode.get("result_type"))} |
+| Rank confidence | {confidence_text} |
+| Place id | `{_cell(geocode.get("place_id"))}` |
+| HTTP status | {_cell(geocode.get("http_status"))} |
+| Geocoder bbox (W,S,E,N) | {bbox_text} |
+| AOI method | `{_cell(geocode.get("aoi_method"))}` |
+| Point-buffer radius | {buffer_text} |
+| AOI bounds (W,S,E,N) | {bounds_text} |
+{attr_line}
+- EN: {geocode.get("note_en") or ""}
+- 中文: {geocode.get("note_zh") or ""}
+
+### Nearby places / assets / 周边地点与设施
+
+| Field | Value |
+|-------|-------|
+| Kind | **{_cell(places.get("kind"))}** |
+| Endpoint | `{_cell(places.get("endpoint"))}` |
+| Filter | `{_cell(places.get("filter"))}` |
+| Bias | `{_cell(places.get("bias"))}` |
+| Categories | `{_cell(", ".join(places.get("categories") or []))}` |
+| Limit | {_cell(places.get("limit"))} |
+| Returned | {_cell(places.get("count"))} |
+| Skipped (no coordinates) | {_cell(places.get("skipped_without_coordinates"))} |
+| HTTP status | {_cell(places.get("http_status"))} |
+
+{place_attr}{places_table}
+- EN: {places.get("note_en") or ""}
+- 中文: {places.get("note_zh") or ""}
+
+Order is the API order. Distance is the value Geoapify sent (meters to the biased point), or n/a when the field was absent.
+
+### Travel time / isoline / 出行时间等时圈
+
+| Field | Value |
+|-------|-------|
+| Kind | **{_cell(iso_kind)}** |
+| Endpoint | `{_cell(isoline.get("endpoint"))}` |
+| Type | `{_cell(isoline.get("isoline_type"))}` |
+| Mode | `{_cell(isoline.get("mode"))}` |
+| Range (seconds) | {_cell(isoline.get("range_seconds"))} |
+| Traffic model | `{_cell(isoline.get("traffic"))}` |
+| Origin (lon, lat) | {_fmt(isoline.get("origin_lon"), 6)}, {_fmt(isoline.get("origin_lat"), 6)} |
+| Isoline id | `{_cell(isoline.get("isoline_id"))}` |
+| HTTP status | {_cell(isoline.get("http_status"))} |
+| Follow-up by id | {_cell(isoline.get("follow_up"))} |
+
+{iso_geom}
+- EN: {isoline.get("note_en") or ""}
+- 中文: {isoline.get("note_zh") or ""}
+
+---
+
+"""
+
+
 def write_markdown_report(
     aoi: AOI,
     result: ScreeningResult,
@@ -133,6 +285,8 @@ def write_markdown_report(
                 + "\n"
             )
 
+    geo_block = _geoapify_block(result.geo_context) if result.geo_context else ""
+
     fig_block = ""
     if figure_paths:
         lines = ["## Figures / 附图\n"]
@@ -171,7 +325,7 @@ def write_markdown_report(
 
 ---
 
-## Composite Result / 综合结果
+{geo_block}## Composite Result / 综合结果
 
 | Metric | Value |
 |--------|-------|

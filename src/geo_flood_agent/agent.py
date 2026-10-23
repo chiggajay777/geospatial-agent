@@ -22,6 +22,20 @@ from geo_flood_agent.aoi import AOI, aoi_from_bbox, aoi_from_geojson
 from geo_flood_agent.cog import TransferStats
 from geo_flood_agent.config import Settings, default_output_dir
 from geo_flood_agent.figures import write_screening_figures
+from geo_flood_agent.geoapify import (
+    GeoapifyClient,
+    GeoapifyError,
+    assemble_geo_context,
+    build_screening_aoi,
+    parse_categories,
+    public_geo_context,
+    skipped_isoline,
+    validate_buffer_m,
+    validate_isoline_minutes,
+    validate_places_limit,
+    validate_radius_m,
+    validate_travel_mode,
+)
 from geo_flood_agent.llm import audit_numbers, run_tool_loop
 from geo_flood_agent.narrative import deterministic_narrative
 from geo_flood_agent.report import write_markdown_report
@@ -108,9 +122,14 @@ class FloodScreeningAgent:
         self.transfer = TransferStats()
         self._aoi: AOI | None = None
         self._screening: ScreeningResult | None = None
+        self._geocode_payload: dict | None = None
+        self._geo_client: GeoapifyClient | None = None
         self.tools: dict[str, ToolFn] = {
             "validate_aoi_geojson": self._tool_validate_geojson,
             "validate_aoi_bbox": self._tool_validate_bbox,
+            "geocode_place": self._tool_geocode_place,
+            "search_nearby_places": self._tool_search_nearby_places,
+            "travel_time_isoline": self._tool_travel_time_isoline,
             "run_flood_screening": self._tool_screen,
             "analyze_terrain": self._tool_analyze_terrain,
             "analyze_surface_water": self._tool_analyze_surface_water,
@@ -131,6 +150,59 @@ class FloodScreeningAgent:
         aoi = aoi_from_bbox(west, south, east, north)
         self._aoi = aoi
         return aoi
+
+    def _client(self) -> GeoapifyClient:
+        if self._geo_client is None:
+            self._geo_client = GeoapifyClient(api_key=self.settings.geoapify_api_key)
+        return self._geo_client
+
+    def _tool_geocode_place(self, text: str, buffer_m: float = 2000.0) -> dict:
+        """Geocode ``text`` and set the screening AOI. Raises if the key is missing or nothing matches."""
+        buffer_m = validate_buffer_m(buffer_m)
+        payload = self._client().geocode(text)
+        aoi, payload = build_screening_aoi(payload, buffer_m)
+        self._aoi = aoi
+        self._screening = None
+        self._geocode_payload = payload
+        return payload
+
+    def _origin_lon_lat(self) -> tuple[float, float]:
+        if self._geocode_payload is not None:
+            return float(self._geocode_payload["lon"]), float(self._geocode_payload["lat"])
+        if self._aoi is not None:
+            return self._aoi.centroid
+        raise GeoapifyError(
+            "search_nearby_places and travel_time_isoline need geocode_place or a validated AOI first."
+        )
+
+    def _tool_search_nearby_places(
+        self,
+        radius_m: float = 2000.0,
+        limit: int = 15,
+        categories: str | list[str] | None = None,
+    ) -> dict:
+        lon, lat = self._origin_lon_lat()
+        radius_m = validate_radius_m(radius_m)
+        limit = validate_places_limit(limit)
+        if isinstance(categories, list):
+            cats = parse_categories(",".join(categories))
+        else:
+            cats = parse_categories(categories)
+        # Request failures become kind=UNAVAILABLE inside the client.
+        # A missing key still raises GeoapifyKeyError from the client constructor.
+        return self._client().nearby_places(
+            lon,
+            lat,
+            radius_m=radius_m,
+            limit=limit,
+            categories=cats,
+        )
+
+    def _tool_travel_time_isoline(self, minutes: float = 10.0, mode: str = "drive") -> dict:
+        lon, lat = self._origin_lon_lat()
+        mode = validate_travel_mode(mode)
+        seconds = validate_isoline_minutes(minutes)
+        return self._client().isoline(lon, lat, mode=mode, range_seconds=seconds)
 
     def _ensure(self) -> ScreeningResult:
         if self._screening is None:
@@ -287,6 +359,11 @@ class FloodScreeningAgent:
             "State that permanent water is excluded from the land score when the tools say so. "
             "State that this is not a hydraulic flood model."
         )
+        if self._geocode_payload is not None:
+            system += (
+                " Do not name businesses, hospitals, schools, or other places, and do not describe "
+                "a travel-time polygon. Those lines are written from Geoapify responses outside this draft."
+            )
         user = (
             f"AOI bounds (W,S,E,N)={list(aoi.bounds)} centroid={list(aoi.centroid)} "
             f"area_km2={round(aoi.approx_area_km2(), 4)} mode={self.settings.mode}. "
@@ -411,6 +488,12 @@ class FloodScreeningAgent:
             summary["elevation_provider"] = result.elevation.get("provider")
             summary["elev_mean_m"] = result.elevation.get("elev_mean_m")
             summary["hand_land_median_m"] = result.elevation.get("hand_land_median_m")
+        if result.geo_context:
+            summary["geoapify"] = public_geo_context(result.geo_context)
+            summary["note"] = (
+                "Layer tables are authoritative. MOCK layers are excluded from the live composite. "
+                "Geoapify blocks are place and travel-time context, not flood depth."
+            )
         summary_json_path = out_dir / "summary.json"
         summary_json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
         trace_path = out_dir / "tool_trace.json"
@@ -434,6 +517,97 @@ class FloodScreeningAgent:
             raise ValueError("Provide geojson= or bbox=(w,s,e,n)")
 
         narrative, trace = self._plan()
+        return self._finish(aoi, narrative, trace, out_dir)
+
+    def run_place(
+        self,
+        text: str,
+        *,
+        out_dir: Path | None = None,
+        buffer_m: float = 2000.0,
+        places_radius_m: float | None = None,
+        places_limit: int = 15,
+        places_categories: str | None = None,
+        isoline_minutes: float = 10.0,
+        travel_mode: str = "drive",
+        skip_isoline: bool = False,
+    ) -> AgentRunResult:
+        """Geocode ``text``, screen that AOI, and attach places plus a travel-time isoline.
+
+        Flood scores still come from ``run_screening``. Geoapify does not change them.
+        A missing API key or an empty geocode raises. A failed places or isoline call
+        is recorded as UNAVAILABLE and the screening memo is still written.
+        """
+        buffer_m = validate_buffer_m(buffer_m)
+        radius_m = validate_radius_m(buffer_m if places_radius_m is None else places_radius_m)
+        places_limit = validate_places_limit(places_limit)
+        categories = parse_categories(places_categories)
+        if not skip_isoline:
+            validate_travel_mode(travel_mode)
+            validate_isoline_minutes(isoline_minutes)
+
+        self._screening = None
+        self._geocode_payload = None
+        self.transfer = TransferStats()
+
+        geocode = self.tools["geocode_place"](text, buffer_m=buffer_m)
+        aoi = self._aoi
+        if aoi is None:
+            raise GeoapifyError("Geocoding did not produce an AOI.")
+        places = self.tools["search_nearby_places"](
+            radius_m=radius_m,
+            limit=places_limit,
+            categories=categories,
+        )
+        if skip_isoline:
+            isoline = skipped_isoline(float(geocode["lon"]), float(geocode["lat"]))
+        else:
+            isoline = self.tools["travel_time_isoline"](minutes=isoline_minutes, mode=travel_mode)
+
+        def _step(name: str, arguments: dict, result: dict) -> dict:
+            kind = result.get("kind")
+            failed = kind in {"UNAVAILABLE", "PENDING"}
+            return {
+                "round": 0,
+                "tool": name,
+                "arguments": arguments,
+                "ok": not failed,
+                "error": result.get("error"),
+                "result": {k: v for k, v in result.items() if k != "features"},
+                "planner": "deterministic",
+            }
+
+        geo_steps = [
+            _step("geocode_place", {"text": text, "buffer_m": buffer_m}, geocode),
+            _step(
+                "search_nearby_places",
+                {"radius_m": radius_m, "limit": places_limit, "categories": categories},
+                places,
+            ),
+            _step(
+                "travel_time_isoline",
+                {
+                    "minutes": None if skip_isoline else isoline_minutes,
+                    "mode": None if skip_isoline else travel_mode,
+                    "skipped": skip_isoline,
+                },
+                isoline,
+            ),
+        ]
+        narrative, trace = self._plan()
+        screening = self._ensure()
+        screening.geo_context = assemble_geo_context(geocode, places, isoline)
+        trace["steps"] = geo_steps + list(trace.get("steps") or [])
+        trace["geoapify"] = "context-attached"
+        return self._finish(aoi, narrative, trace, out_dir)
+
+    def _finish(
+        self,
+        aoi: AOI,
+        narrative: dict[str, str],
+        trace: dict,
+        out_dir: Path | None,
+    ) -> AgentRunResult:
         screening = self._ensure()
         # Transfer counter was passed into run_screening; copy the final tally
         # if the screening object was created with that counter.

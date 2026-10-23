@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "geo-flood-agent"
-version = "0.3.0"
-description = "Flood / water inundation screening agent: Copernicus HAND, JRC water mask, optional LLM tools"
+version = "0.4.0"
+description = "Flood / water inundation screening agent: Copernicus HAND, JRC water mask, optional Geoapify place context"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

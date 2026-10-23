@@ -25,6 +25,7 @@ class Settings:
     use_llm: bool
     llm_timeout_s: float
     cache_dir: Path
+    geoapify_api_key: str | None
 
 
 def get_settings(mode_override: str | None = None, *, use_llm: bool | None = None) -> Settings:
@@ -47,6 +48,7 @@ def get_settings(mode_override: str | None = None, *, use_llm: bool | None = Non
         use_llm=bool(use_llm),
         llm_timeout_s=timeout,
         cache_dir=cache,
+        geoapify_api_key=(os.getenv("GEOAPIFY_API_KEY") or "").strip() or None,
     )
 
 
