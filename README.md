@@ -2,7 +2,7 @@
 
 **AOI in → bilingual (EN/ZH) flood / inundation screening memo, GeoJSON, `summary.json`, and figures.**
 
-Portfolio piece for a remote-sensing / hydrology PhD application. The core path uses free public data and runs on a CPU (tested here with Python 3.12). `--demo` needs no API key and does not use the network.
+The core path uses free public data and runs on a CPU (tested here with Python 3.12). `--demo` needs no API key and does not use the network.
 
 An optional [Geoapify](https://www.geoapify.com) place query reads `GEOAPIFY_API_KEY` and adds a geocoded AOI, nearby places, and a travel-time isoline. Those records are location context. They are not flood depth. See [Geoapify place context](#geoapify-place-context).
 

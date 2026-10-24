@@ -131,7 +131,7 @@ Largest HEAD Content-Length seen (full source object, not downloaded in full): `
 
 ---
 
-## Method (portfolio note)
+## Method
 
 1. Validate AOI (Shapely). Reject boxes larger than 5° on a side.
 2. **Live terrain:** windowed read of Copernicus DEM GLO-30 COGs from the public AWS bucket, reprojected to the local UTM zone. Priority-flood (Barnes et al. 2014) + D8 (O'Callaghan & Mark 1984) + HAND (Nobre et al. 2011) and slope. The DEM is a DSM.

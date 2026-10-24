@@ -24,7 +24,7 @@ from geo_flood_agent.constants import PERMANENT_OCCURRENCE
 
 STAC_SEARCH = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 SIGN_URL = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
-USER_AGENT = "geo-flood-agent/0.3 (PhD portfolio demo; research)"
+USER_AGENT = "geo-flood-agent/0.3 (JRC surface-water screening)"
 
 
 def _get_json(url: str, timeout: float = 60.0) -> dict:

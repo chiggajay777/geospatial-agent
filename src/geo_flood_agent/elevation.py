@@ -61,7 +61,7 @@ def _grid_points(aoi: AOI, n: int = 5) -> list[tuple[float, float]]:
 def _http_get_json(url: str, timeout: float = 20.0) -> dict:
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "geo-flood-agent/0.2 (PhD portfolio demo; research)"},
+        headers={"User-Agent": "geo-flood-agent/0.2 (public elevation lookup)"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
