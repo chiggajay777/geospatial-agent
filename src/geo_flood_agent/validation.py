@@ -34,7 +34,7 @@ S1_BASE = "https://storage.googleapis.com/sen1floods11/v1.1"
 LABEL_URL = S1_BASE + "/data/flood_events/HandLabeled/LabelHand/{name}"
 JRC_URL = S1_BASE + "/data/flood_events/HandLabeled/JRCWaterHand/{name}"
 TEST_CSV_URL = S1_BASE + "/splits/flood_handlabeled/flood_test_data.csv"
-USER_AGENT = "geo-flood-agent/0.3 (PhD portfolio validation; research)"
+USER_AGENT = "geo-flood-agent/0.3 (Sen1Floods11 validation)"
 
 SCORE_DEFINITION = (
     "Terrain concern on non-permanent pixels: "
