@@ -191,6 +191,8 @@ Reviewer walkthrough (offline `--demo`, then `--place`): [`docs/walkthrough.md`]
 
 Prompts for this slice, including one that had to be corrected when the isoline moved into this PR: [`docs/prompts.md`](docs/prompts.md).
 
+OpenAPI and MCP feedback (endpoints used, REST versus MCP, human corrections): [`docs/geoapify-openapi-mcp-feedback.md`](docs/geoapify-openapi-mcp-feedback.md).
+
 ## LLM setup
 
 Default: no model is called.
@@ -257,7 +259,7 @@ python -m unittest discover -s tests
 ```
 src/geo_flood_agent/    CLI, deterministic + LLM planners, HAND, JRC mask, Geoapify REST, validation
 examples/               sample AOI and the offline MOCK memo
-docs/                   reviewer walkthrough, Geoapify prompts, MCP client snippet
+docs/                   reviewer walkthrough, OpenAPI/MCP feedback, Geoapify prompts, MCP client snippet
 figures/                live sample maps and validation curves from the run recorded above
 tests/                  synthetic valley, metrics, mock scores, mocked Geoapify HTTP
 ```
